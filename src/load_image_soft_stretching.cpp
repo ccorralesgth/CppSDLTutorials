@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <string>
 
+// Note:
+// this file is about loading an image and displaying it on the screen, and scaling it.
+
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;

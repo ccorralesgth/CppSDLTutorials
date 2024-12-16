@@ -1,6 +1,8 @@
 #include <iostream>
 #include <SDL2/SDL.h>
 
+// Notes: 
+// This file is about window creation and destruction.
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -41,4 +43,4 @@ int main(int argc, char* args[])
     SDL_Quit();
 
     return 0;
-}   
+}     

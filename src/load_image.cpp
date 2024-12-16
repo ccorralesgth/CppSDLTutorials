@@ -1,6 +1,10 @@
 #include <iostream>
 #include <SDL2/SDL.h>
 
+
+// Notes:
+// load image from file and display it on the screen
+
 //Tip : avoid using global variables (unnecesary)
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -60,8 +64,8 @@ int main(int argc, char* args[])
     screenSurface = SDL_GetWindowSurface(window);
 
     // load image
-    //if (!loadMedia(image_HelloWorld))
-    if (!loadMedia())
+    if (!loadMedia(image_HelloWorld))
+    //if (!loadMedia())
     {
         std::cerr << "Failed to load media!" << std::endl;
         SDL_Log("Failed to load media!\n");

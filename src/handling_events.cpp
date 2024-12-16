@@ -1,6 +1,9 @@
 #include <iostream>
 #include <SDL2/SDL.h>
 
+//Notes: 
+// This file is about event handling
+
 const int SCREEN_WIDTH = 640;   
 const int SCREEN_HEIGHT = 480;
 

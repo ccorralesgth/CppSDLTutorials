@@ -2,6 +2,9 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
 
+// Note:
+// This file is about loading an image from a file and displaying it on the screen.
+
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;

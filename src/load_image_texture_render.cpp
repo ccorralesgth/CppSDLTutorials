@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <string>
 
+//Notes: 
+// This file is about loading an image from a file and displaying it on the screen, without the IMG_Load function.
+// is using other render techniques,,, see below.
+
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;

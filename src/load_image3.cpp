@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <string>
 
+// Note:
+// This file is about loading an image from a file and displaying it on the screen,
+// but with SLD_Image library.
+
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -98,7 +102,7 @@ void close()
 	IMG_Quit();
 	SDL_Quit();
 }
-
+ 
 SDL_Surface* loadSurface( std::string path )
 {
 	//The final optimized image

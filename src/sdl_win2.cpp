@@ -1,6 +1,10 @@
 #include <iostream>
 #include <SDL2/SDL.h>
 
+// Notes: 
+// This tutorial file is about window creation and destruction.
+// also, contains event loop to keep the window open until quit.
+
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 
