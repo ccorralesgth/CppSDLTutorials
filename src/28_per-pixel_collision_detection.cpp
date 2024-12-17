@@ -1,10 +1,11 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, vectors, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
+#include <vector>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -23,13 +24,15 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -54,6 +57,46 @@ class LTexture
 		int mHeight;
 };
 
+//The dot that will move around on the screen
+class Dot
+{
+    public:
+		//The dimensions of the dot
+		static const int DOT_WIDTH = 20;
+		static const int DOT_HEIGHT = 20;
+
+		//Maximum axis velocity of the dot
+		static const int DOT_VEL = 1;
+
+		//Initializes the variables
+		Dot( int x, int y );
+
+		//Takes key presses and adjusts the dot's velocity
+		void handleEvent( SDL_Event& e );
+
+		//Moves the dot and checks collision
+		void move( std::vector<SDL_Rect>& otherColliders );
+
+		//Shows the dot on the screen
+		void render();
+
+		//Gets the collision boxes
+		std::vector<SDL_Rect>& getColliders();
+
+    private:
+		//The X and Y offsets of the dot
+		int mPosX, mPosY;
+
+		//The velocity of the dot
+		int mVelX, mVelY;
+		
+		//Dot's collision boxes
+	    std::vector<SDL_Rect> mColliders;
+
+		//Moves the collision boxes relative to the dot's offset
+		void shiftColliders();
+};
+
 //Starts up SDL and creates window
 bool init();
 
@@ -63,18 +106,17 @@ bool loadMedia();
 //Frees media and shuts down SDL
 void close();
 
+//Box set collision detector
+bool checkCollision( std::vector<SDL_Rect>& a, std::vector<SDL_Rect>& b );
+
 //The window we'll be rendering to
 SDL_Window* gWindow = NULL;
 
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
-
+//Scene textures
+LTexture gDotTexture;
 
 LTexture::LTexture()
 {
@@ -131,6 +173,7 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +181,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +199,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -221,6 +266,142 @@ int LTexture::getHeight()
 	return mHeight;
 }
 
+Dot::Dot( int x, int y )
+{
+    //Initialize the offsets
+    mPosX = x;
+    mPosY = y;
+
+    //Create the necessary SDL_Rects
+    mColliders.resize( 11 );
+
+    //Initialize the velocity
+    mVelX = 0;
+    mVelY = 0;
+
+    //Initialize the collision boxes' width and height
+    mColliders[ 0 ].w = 6;
+    mColliders[ 0 ].h = 1;
+
+    mColliders[ 1 ].w = 10;
+    mColliders[ 1 ].h = 1;
+
+    mColliders[ 2 ].w = 14;
+    mColliders[ 2 ].h = 1;
+
+    mColliders[ 3 ].w = 16;
+    mColliders[ 3 ].h = 2;
+
+    mColliders[ 4 ].w = 18;
+    mColliders[ 4 ].h = 2;
+
+    mColliders[ 5 ].w = 20;
+    mColliders[ 5 ].h = 6;
+
+    mColliders[ 6 ].w = 18;
+    mColliders[ 6 ].h = 2;
+
+    mColliders[ 7 ].w = 16;
+    mColliders[ 7 ].h = 2;
+
+    mColliders[ 8 ].w = 14;
+    mColliders[ 8 ].h = 1;
+
+    mColliders[ 9 ].w = 10;
+    mColliders[ 9 ].h = 1;
+
+    mColliders[ 10 ].w = 6;
+    mColliders[ 10 ].h = 1;
+
+	//Initialize colliders relative to position
+	shiftColliders();
+}
+
+void Dot::handleEvent( SDL_Event& e )
+{
+    //If a key was pressed
+	if( e.type == SDL_KEYDOWN && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY -= DOT_VEL; break;
+            case SDLK_DOWN: mVelY += DOT_VEL; break;
+            case SDLK_LEFT: mVelX -= DOT_VEL; break;
+            case SDLK_RIGHT: mVelX += DOT_VEL; break;
+        }
+    }
+    //If a key was released
+    else if( e.type == SDL_KEYUP && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY += DOT_VEL; break;
+            case SDLK_DOWN: mVelY -= DOT_VEL; break;
+            case SDLK_LEFT: mVelX += DOT_VEL; break;
+            case SDLK_RIGHT: mVelX -= DOT_VEL; break;
+        }
+    }
+}
+
+void Dot::move( std::vector<SDL_Rect>& otherColliders )
+{
+    //Move the dot left or right
+    mPosX += mVelX;
+    shiftColliders();
+
+    //If the dot collided or went too far to the left or right
+    if( ( mPosX < 0 ) || ( mPosX + DOT_WIDTH > SCREEN_WIDTH ) || checkCollision( mColliders, otherColliders ) )
+    {
+        //Move back
+        mPosX -= mVelX;
+		shiftColliders();
+    }
+
+    //Move the dot up or down
+    mPosY += mVelY;
+	shiftColliders();
+
+    //If the dot collided or went too far up or down
+    if( ( mPosY < 0 ) || ( mPosY + DOT_HEIGHT > SCREEN_HEIGHT ) || checkCollision( mColliders, otherColliders ) )
+    {
+        //Move back
+        mPosY -= mVelY;
+		shiftColliders();
+    }
+}
+
+void Dot::render()
+{
+    //Show the dot
+	gDotTexture.render( mPosX, mPosY );
+}
+
+void Dot::shiftColliders()
+{
+    //The row offset
+    int r = 0;
+
+    //Go through the dot's collision boxes
+    for( int set = 0; set < mColliders.size(); ++set )
+    {
+        //Center the collision box
+        mColliders[ set ].x = mPosX + ( DOT_WIDTH - mColliders[ set ].w ) / 2;
+
+        //Set the collision box at its row offset
+        mColliders[ set ].y = mPosY + r;
+
+        //Move the row offset down the height of the collision box
+        r += mColliders[ set ].h;
+    }
+}
+
+std::vector<SDL_Rect>& Dot::getColliders()
+{
+	return mColliders;
+}
+
 bool init()
 {
 	//Initialization flag
@@ -268,13 +449,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,22 +461,11 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load dot texture
+	if( !gDotTexture.loadFromFile( "28_per-pixel_collision_detection/dot.bmp" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load dot texture!\n" );
 		success = false;
-	}
-	else
-	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
 	}
 
 	return success;
@@ -311,11 +474,7 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gDotTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,9 +483,47 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
+}
+
+bool checkCollision( std::vector<SDL_Rect>& a, std::vector<SDL_Rect>& b )
+{
+    //The sides of the rectangles
+    int leftA, leftB;
+    int rightA, rightB;
+    int topA, topB;
+    int bottomA, bottomB;
+
+    //Go through the A boxes
+    for( int Abox = 0; Abox < a.size(); Abox++ )
+    {
+        //Calculate the sides of rect A
+        leftA = a[ Abox ].x;
+        rightA = a[ Abox ].x + a[ Abox ].w;
+        topA = a[ Abox ].y;
+        bottomA = a[ Abox ].y + a[ Abox ].h;
+
+        //Go through the B boxes
+        for( int Bbox = 0; Bbox < b.size(); Bbox++ )
+        {
+            //Calculate the sides of rect B
+            leftB = b[ Bbox ].x;
+            rightB = b[ Bbox ].x + b[ Bbox ].w;
+            topB = b[ Bbox ].y;
+            bottomB = b[ Bbox ].y + b[ Bbox ].h;
+
+            //If no sides from A are outside of B
+            if( ( ( bottomA <= topB ) || ( topA >= bottomB ) || ( rightA <= leftB ) || ( leftA >= rightB ) ) == false )
+            {
+                //A collision is detected
+                return true;
+            }
+        }
+    }
+
+    //If neither set of collision boxes touched
+    return false;
 }
 
 int main( int argc, char* args[] )
@@ -351,6 +548,12 @@ int main( int argc, char* args[] )
 			//Event handler
 			SDL_Event e;
 
+			//The dot that will be moving around on the screen
+			Dot dot( 0, 0 );
+			
+			//The dot that will be collided against
+			Dot otherDot( SCREEN_WIDTH / 4, SCREEN_HEIGHT / 4 );
+			
 			//While application is running
 			while( !quit )
 			{
@@ -362,14 +565,21 @@ int main( int argc, char* args[] )
 					{
 						quit = true;
 					}
+
+					//Handle input for the dot
+					dot.handleEvent( e );
 				}
+
+				//Move the dot and check collision
+				dot.move( otherDot.getColliders() );
 
 				//Clear screen
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
-
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				
+				//Render dots
+				dot.render();
+				otherDot.render();
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );

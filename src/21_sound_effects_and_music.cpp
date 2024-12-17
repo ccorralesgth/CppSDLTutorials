@@ -1,10 +1,11 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, SDL_ttf, SDL_mixer, standard IO, math, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL_mixer.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -23,13 +24,15 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -69,11 +72,17 @@ SDL_Window* gWindow = NULL;
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
+//Scene texture
+LTexture gPromptTexture;
 
-//Rendered texture
-LTexture gTextTexture;
+//The music that will be played
+Mix_Music *gMusic = NULL;
+
+//The sound effects that will be used
+Mix_Chunk *gScratch = NULL;
+Mix_Chunk *gHigh = NULL;
+Mix_Chunk *gMedium = NULL;
+Mix_Chunk *gLow = NULL;
 
 
 LTexture::LTexture()
@@ -131,6 +140,7 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +148,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +166,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -227,7 +239,7 @@ bool init()
 	bool success = true;
 
 	//Initialize SDL
-	if( SDL_Init( SDL_INIT_VIDEO ) < 0 )
+	if( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_AUDIO ) < 0 )
 	{
 		printf( "SDL could not initialize! SDL Error: %s\n", SDL_GetError() );
 		success = false;
@@ -269,10 +281,10 @@ bool init()
 					success = false;
 				}
 
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
+				 //Initialize SDL_mixer
+				if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 2048 ) < 0 )
 				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
+					printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
 					success = false;
 				}
 			}
@@ -287,22 +299,48 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load prompt texture
+	if( !gPromptTexture.loadFromFile( "21_sound_effects_and_music/prompt.png" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load prompt texture!\n" );
 		success = false;
 	}
-	else
+
+	//Load music
+	gMusic = Mix_LoadMUS( "21_sound_effects_and_music/beat.wav" );
+	if( gMusic == NULL )
 	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
+		printf( "Failed to load beat music! SDL_mixer Error: %s\n", Mix_GetError() );
+		success = false;
+	}
+	
+	//Load sound effects
+	gScratch = Mix_LoadWAV( "21_sound_effects_and_music/scratch.wav" );
+	if( gScratch == NULL )
+	{
+		printf( "Failed to load scratch sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+		success = false;
+	}
+	
+	gHigh = Mix_LoadWAV( "21_sound_effects_and_music/high.wav" );
+	if( gHigh == NULL )
+	{
+		printf( "Failed to load high sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+		success = false;
+	}
+
+	gMedium = Mix_LoadWAV( "21_sound_effects_and_music/medium.wav" );
+	if( gMedium == NULL )
+	{
+		printf( "Failed to load medium sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+		success = false;
+	}
+
+	gLow = Mix_LoadWAV( "21_sound_effects_and_music/low.wav" );
+	if( gLow == NULL )
+	{
+		printf( "Failed to load low sound effect! SDL_mixer Error: %s\n", Mix_GetError() );
+		success = false;
 	}
 
 	return success;
@@ -311,11 +349,21 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
+	gPromptTexture.free();
 
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	//Free the sound effects
+	Mix_FreeChunk( gScratch );
+	Mix_FreeChunk( gHigh );
+	Mix_FreeChunk( gMedium );
+	Mix_FreeChunk( gLow );
+	gScratch = NULL;
+	gHigh = NULL;
+	gMedium = NULL;
+	gLow = NULL;
+	
+	//Free the music
+	Mix_FreeMusic( gMusic );
+	gMusic = NULL;
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,7 +372,7 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
+	Mix_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -362,14 +410,70 @@ int main( int argc, char* args[] )
 					{
 						quit = true;
 					}
+					//Handle key press
+					else if( e.type == SDL_KEYDOWN )
+					{
+						switch( e.key.keysym.sym )
+						{
+							//Play high sound effect
+							case SDLK_1:
+							Mix_PlayChannel( -1, gHigh, 0 );
+							break;
+							
+							//Play medium sound effect
+							case SDLK_2:
+							Mix_PlayChannel( -1, gMedium, 0 );
+							break;
+							
+							//Play low sound effect
+							case SDLK_3:
+							Mix_PlayChannel( -1, gLow, 0 );
+							break;
+							
+							//Play scratch sound effect
+							case SDLK_4:
+							Mix_PlayChannel( -1, gScratch, 0 );
+							break;
+							
+							case SDLK_9:
+							//If there is no music playing
+							if( Mix_PlayingMusic() == 0 )
+							{
+								//Play the music
+								Mix_PlayMusic( gMusic, -1 );
+							}
+							//If music is being played
+							else
+							{
+								//If the music is paused
+								if( Mix_PausedMusic() == 1 )
+								{
+									//Resume the music
+									Mix_ResumeMusic();
+								}
+								//If the music is playing
+								else
+								{
+									//Pause the music
+									Mix_PauseMusic();
+								}
+							}
+							break;
+							
+							case SDLK_0:
+							//Stop the music
+							Mix_HaltMusic();
+							break;
+						}
+					}
 				}
 
 				//Clear screen
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				//Render prompt
+				gPromptTexture.render( 0, 0 );
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );

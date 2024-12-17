@@ -1,10 +1,10 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -22,24 +22,12 @@ class LTexture
 
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
-		
-		//Creates image from font string
-		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
-		void setColor( Uint8 red, Uint8 green, Uint8 blue );
-
-		//Set blending
-		void setBlendMode( SDL_BlendMode blending );
-
-		//Set alpha modulation
-		void setAlpha( Uint8 alpha );
-		
 		//Renders texture at given point
-		void render( int x, int y, SDL_Rect* clip = NULL, double angle = 0.0, SDL_Point* center = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE );
+		void render( int x, int y );
 
 		//Gets image dimensions
 		int getWidth();
@@ -69,11 +57,9 @@ SDL_Window* gWindow = NULL;
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
+//Scene textures
+LTexture gFooTexture;
+LTexture gBackgroundTexture;
 
 
 LTexture::LTexture()
@@ -131,40 +117,6 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
-bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
-{
-	//Get rid of preexisting texture
-	free();
-
-	//Render text surface
-	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
-	{
-		//Create texture from surface pixels
-        mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
-		if( mTexture == NULL )
-		{
-			printf( "Unable to create texture from rendered text! SDL Error: %s\n", SDL_GetError() );
-		}
-		else
-		{
-			//Get image dimensions
-			mWidth = textSurface->w;
-			mHeight = textSurface->h;
-		}
-
-		//Get rid of old surface
-		SDL_FreeSurface( textSurface );
-	}
-	
-	//Return success
-	return mTexture != NULL;
-}
-
 void LTexture::free()
 {
 	//Free texture if it exists
@@ -177,38 +129,11 @@ void LTexture::free()
 	}
 }
 
-void LTexture::setColor( Uint8 red, Uint8 green, Uint8 blue )
-{
-	//Modulate texture rgb
-	SDL_SetTextureColorMod( mTexture, red, green, blue );
-}
-
-void LTexture::setBlendMode( SDL_BlendMode blending )
-{
-	//Set blending function
-	SDL_SetTextureBlendMode( mTexture, blending );
-}
-		
-void LTexture::setAlpha( Uint8 alpha )
-{
-	//Modulate texture alpha
-	SDL_SetTextureAlphaMod( mTexture, alpha );
-}
-
-void LTexture::render( int x, int y, SDL_Rect* clip, double angle, SDL_Point* center, SDL_RendererFlip flip )
+void LTexture::render( int x, int y )
 {
 	//Set rendering space and render to screen
 	SDL_Rect renderQuad = { x, y, mWidth, mHeight };
-
-	//Set clip rendering dimensions
-	if( clip != NULL )
-	{
-		renderQuad.w = clip->w;
-		renderQuad.h = clip->h;
-	}
-
-	//Render to screen
-	SDL_RenderCopyEx( gRenderer, mTexture, clip, &renderQuad, angle, center, flip );
+	SDL_RenderCopy( gRenderer, mTexture, NULL, &renderQuad );
 }
 
 int LTexture::getWidth()
@@ -249,8 +174,8 @@ bool init()
 		}
 		else
 		{
-			//Create vsynced renderer for window
-			gRenderer = SDL_CreateRenderer( gWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
+			//Create renderer for window
+			gRenderer = SDL_CreateRenderer( gWindow, -1, SDL_RENDERER_ACCELERATED );
 			if( gRenderer == NULL )
 			{
 				printf( "Renderer could not be created! SDL Error: %s\n", SDL_GetError() );
@@ -268,13 +193,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,22 +205,18 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load Foo' texture
+	if( !gFooTexture.loadFromFile( "10_color_keying/foo.png" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load Foo' texture image!\n" );
 		success = false;
 	}
-	else
+	
+	//Load background texture
+	if( !gBackgroundTexture.loadFromFile( "10_color_keying/background.png" ) )
 	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
+		printf( "Failed to load background texture image!\n" );
+		success = false;
 	}
 
 	return success;
@@ -311,11 +225,8 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gFooTexture.free();
+	gBackgroundTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,7 +235,6 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -368,8 +278,11 @@ int main( int argc, char* args[] )
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				//Render background texture to screen
+				gBackgroundTexture.render( 0, 0 );
+
+				//Render Foo' to the screen
+				gFooTexture.render( 240, 190 );
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );

@@ -1,10 +1,10 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -23,13 +23,21 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		//Loads image into pixel buffer
+		bool loadPixelsFromFile( std::string path );
+
+		//Creates image from preloaded pixels
+		bool loadFromPixels();
+
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -45,10 +53,18 @@ class LTexture
 		int getWidth();
 		int getHeight();
 
+		//Pixel accessors
+		Uint32* getPixels32();
+		Uint32 getPitch32();
+		Uint32 mapRGBA( Uint8 r, Uint8 g, Uint8 b, Uint8 a );
+
 	private:
 		//The actual hardware texture
 		SDL_Texture* mTexture;
 
+		//Surface pixels
+		SDL_Surface* mSurfacePixels;
+		
 		//Image dimensions
 		int mWidth;
 		int mHeight;
@@ -69,12 +85,8 @@ SDL_Window* gWindow = NULL;
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
-
+//Scene textures
+LTexture gFooTexture;
 
 LTexture::LTexture()
 {
@@ -82,6 +94,8 @@ LTexture::LTexture()
 	mTexture = NULL;
 	mWidth = 0;
 	mHeight = 0;
+
+	mSurfacePixels = NULL;
 }
 
 LTexture::~LTexture()
@@ -92,11 +106,29 @@ LTexture::~LTexture()
 
 bool LTexture::loadFromFile( std::string path )
 {
-	//Get rid of preexisting texture
-	free();
+	//Load pixels
+	if( !loadPixelsFromFile( path ) )
+	{
+		printf( "Failed to load pixels for %s!\n", path.c_str() );
+	}
+	else
+	{
+		//Load texture from pixels
+		if( !loadFromPixels() )
+		{
+			printf( "Failed to texture from pixels from %s!\n", path.c_str() );
+		}
+	}
 
-	//The final texture
-	SDL_Texture* newTexture = NULL;
+	//Return success
+	return mTexture != NULL;
+}
+
+
+bool LTexture::loadPixelsFromFile( std::string path )
+{
+	//Free preexisting assets
+	free();
 
 	//Load image at specified path
 	SDL_Surface* loadedSurface = IMG_Load( path.c_str() );
@@ -106,31 +138,61 @@ bool LTexture::loadFromFile( std::string path )
 	}
 	else
 	{
-		//Color key image
-		SDL_SetColorKey( loadedSurface, SDL_TRUE, SDL_MapRGB( loadedSurface->format, 0, 0xFF, 0xFF ) );
-
-		//Create texture from surface pixels
-        newTexture = SDL_CreateTextureFromSurface( gRenderer, loadedSurface );
-		if( newTexture == NULL )
+		//Convert surface to display format
+		mSurfacePixels = SDL_ConvertSurfaceFormat( loadedSurface, SDL_GetWindowPixelFormat( gWindow ), 0 );
+		if( mSurfacePixels == NULL )
 		{
-			printf( "Unable to create texture from %s! SDL Error: %s\n", path.c_str(), SDL_GetError() );
+			printf( "Unable to convert loaded surface to display format! SDL Error: %s\n", SDL_GetError() );
 		}
 		else
 		{
 			//Get image dimensions
-			mWidth = loadedSurface->w;
-			mHeight = loadedSurface->h;
+			mWidth = mSurfacePixels->w;
+			mHeight = mSurfacePixels->h;
 		}
 
 		//Get rid of old loaded surface
 		SDL_FreeSurface( loadedSurface );
 	}
 
+	return mSurfacePixels != NULL;
+}
+
+bool LTexture::loadFromPixels()
+{
+	//Only load if pixels exist
+	if( mSurfacePixels == NULL )
+	{
+		printf( "No pixels loaded!" );
+	}
+	else
+	{
+		//Color key image
+		SDL_SetColorKey( mSurfacePixels, SDL_TRUE, SDL_MapRGB( mSurfacePixels->format, 0, 0xFF, 0xFF ) );
+
+		//Create texture from surface pixels
+		mTexture = SDL_CreateTextureFromSurface( gRenderer, mSurfacePixels );
+		if( mTexture == NULL )
+		{
+			printf( "Unable to create texture from loaded pixels! SDL Error: %s\n", SDL_GetError() );
+		}
+		else
+		{
+			//Get image dimensions
+			mWidth = mSurfacePixels->w;
+			mHeight = mSurfacePixels->h;
+		}
+
+		//Get rid of old loaded surface
+		SDL_FreeSurface( mSurfacePixels );
+		mSurfacePixels = NULL;
+	}
+
 	//Return success
-	mTexture = newTexture;
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +200,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +218,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -174,6 +238,13 @@ void LTexture::free()
 		mTexture = NULL;
 		mWidth = 0;
 		mHeight = 0;
+	}
+
+	//Free surface if it exists
+	if( mSurfacePixels != NULL )
+	{
+		SDL_FreeSurface( mSurfacePixels );
+		mSurfacePixels = NULL;
 	}
 }
 
@@ -221,6 +292,43 @@ int LTexture::getHeight()
 	return mHeight;
 }
 
+Uint32* LTexture::getPixels32()
+{
+	Uint32* pixels = NULL;
+
+	if( mSurfacePixels != NULL )
+	{
+		pixels =  static_cast<Uint32*>( mSurfacePixels->pixels );
+	}
+
+	return pixels;
+}
+
+Uint32 LTexture::getPitch32()
+{
+	Uint32 pitch = 0;
+
+	if( mSurfacePixels != NULL )
+	{
+		pitch = mSurfacePixels->pitch / 4;
+	}
+
+	return pitch;
+}
+
+
+Uint32 LTexture::mapRGBA( Uint8 r, Uint8 g, Uint8 b, Uint8 a )
+{
+	Uint32 pixel = 0;
+
+	if( mSurfacePixels != NULL )
+	{
+		pixel = SDL_MapRGBA( mSurfacePixels->format, r, g, b, a );
+	}
+
+	return pixel;
+}
+
 bool init()
 {
 	//Initialization flag
@@ -249,7 +357,7 @@ bool init()
 		}
 		else
 		{
-			//Create vsynced renderer for window
+			//Create renderer for window
 			gRenderer = SDL_CreateRenderer( gWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
 			if( gRenderer == NULL )
 			{
@@ -268,13 +376,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,21 +388,35 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load Foo' texture pixel
+	if( !gFooTexture.loadPixelsFromFile( "40_texture_manipulation/foo.png" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Unable to load Foo' texture!\n" );
 		success = false;
 	}
 	else
 	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
+		//Get pixel data
+		Uint32* pixels = gFooTexture.getPixels32();
+		int pixelCount = gFooTexture.getPitch32() * gFooTexture.getHeight();
+
+		//Map colors
+		Uint32 colorKey = gFooTexture.mapRGBA( 0xFF, 0x00, 0xFF, 0xFF );
+		Uint32 transparent = gFooTexture.mapRGBA( 0xFF, 0xFF, 0xFF, 0x00 );
+
+		//Color key pixels
+		for( int i = 0; i < pixelCount; ++i )
 		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
+			if( pixels[ i ] == colorKey )
+			{
+				pixels[ i ] = transparent;
+			}
+		}
+
+		//Create texture from manually color keyed pixels
+		if( !gFooTexture.loadFromPixels() )
+		{
+			printf( "Unable to load Foo' texture from surface!\n" );
 		}
 	}
 
@@ -311,11 +426,7 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gFooTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,7 +435,6 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -368,8 +478,8 @@ int main( int argc, char* args[] )
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				//Render stick figure
+				gFooTexture.render( ( SCREEN_WIDTH - gFooTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gFooTexture.getHeight() ) / 2 );
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );

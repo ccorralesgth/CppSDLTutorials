@@ -1,10 +1,10 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -22,14 +22,11 @@ class LTexture
 
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
-		
-		//Creates image from font string
-		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -39,7 +36,7 @@ class LTexture
 		void setAlpha( Uint8 alpha );
 		
 		//Renders texture at given point
-		void render( int x, int y, SDL_Rect* clip = NULL, double angle = 0.0, SDL_Point* center = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE );
+		void render( int x, int y, SDL_Rect* clip = NULL );
 
 		//Gets image dimensions
 		int getWidth();
@@ -69,11 +66,10 @@ SDL_Window* gWindow = NULL;
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
+//Walking animation
+const int WALKING_ANIMATION_FRAMES = 4;
+SDL_Rect gSpriteClips[ WALKING_ANIMATION_FRAMES ];
+LTexture gSpriteSheetTexture;
 
 
 LTexture::LTexture()
@@ -131,40 +127,6 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
-bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
-{
-	//Get rid of preexisting texture
-	free();
-
-	//Render text surface
-	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
-	{
-		//Create texture from surface pixels
-        mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
-		if( mTexture == NULL )
-		{
-			printf( "Unable to create texture from rendered text! SDL Error: %s\n", SDL_GetError() );
-		}
-		else
-		{
-			//Get image dimensions
-			mWidth = textSurface->w;
-			mHeight = textSurface->h;
-		}
-
-		//Get rid of old surface
-		SDL_FreeSurface( textSurface );
-	}
-	
-	//Return success
-	return mTexture != NULL;
-}
-
 void LTexture::free()
 {
 	//Free texture if it exists
@@ -195,7 +157,7 @@ void LTexture::setAlpha( Uint8 alpha )
 	SDL_SetTextureAlphaMod( mTexture, alpha );
 }
 
-void LTexture::render( int x, int y, SDL_Rect* clip, double angle, SDL_Point* center, SDL_RendererFlip flip )
+void LTexture::render( int x, int y, SDL_Rect* clip )
 {
 	//Set rendering space and render to screen
 	SDL_Rect renderQuad = { x, y, mWidth, mHeight };
@@ -208,7 +170,7 @@ void LTexture::render( int x, int y, SDL_Rect* clip, double angle, SDL_Point* ce
 	}
 
 	//Render to screen
-	SDL_RenderCopyEx( gRenderer, mTexture, clip, &renderQuad, angle, center, flip );
+	SDL_RenderCopy( gRenderer, mTexture, clip, &renderQuad );
 }
 
 int LTexture::getWidth()
@@ -268,13 +230,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,35 +242,43 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load sprite sheet texture
+	if( !gSpriteSheetTexture.loadFromFile( "14_animated_sprites_and_vsync/foo.png" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load walking animation texture!\n" );
 		success = false;
 	}
 	else
 	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
-	}
+		//Set sprite clips
+		gSpriteClips[ 0 ].x =   0;
+		gSpriteClips[ 0 ].y =   0;
+		gSpriteClips[ 0 ].w =  64;
+		gSpriteClips[ 0 ].h = 205;
 
+		gSpriteClips[ 1 ].x =  64;
+		gSpriteClips[ 1 ].y =   0;
+		gSpriteClips[ 1 ].w =  64;
+		gSpriteClips[ 1 ].h = 205;
+		
+		gSpriteClips[ 2 ].x = 128;
+		gSpriteClips[ 2 ].y =   0;
+		gSpriteClips[ 2 ].w =  64;
+		gSpriteClips[ 2 ].h = 205;
+
+		gSpriteClips[ 3 ].x = 192;
+		gSpriteClips[ 3 ].y =   0;
+		gSpriteClips[ 3 ].w =  64;
+		gSpriteClips[ 3 ].h = 205;
+	}
+	
 	return success;
 }
 
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gSpriteSheetTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,7 +287,6 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -351,6 +313,9 @@ int main( int argc, char* args[] )
 			//Event handler
 			SDL_Event e;
 
+			//Current animation frame
+			int frame = 0;
+
 			//While application is running
 			while( !quit )
 			{
@@ -369,10 +334,20 @@ int main( int argc, char* args[] )
 				SDL_RenderClear( gRenderer );
 
 				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				SDL_Rect* currentClip = &gSpriteClips[ frame / 4 ];
+				gSpriteSheetTexture.render( ( SCREEN_WIDTH - currentClip->w ) / 2, ( SCREEN_HEIGHT - currentClip->h ) / 2, currentClip );
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );
+
+				//Go to next frame
+				++frame;
+
+				//Cycle animation
+				if( frame / 4 >= WALKING_ANIMATION_FRAMES )
+				{
+					frame = 0;
+				}
 			}
 		}
 	}

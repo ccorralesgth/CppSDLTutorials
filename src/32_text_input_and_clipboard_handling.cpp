@@ -1,10 +1,12 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, SDL_ttf, standard IO, strings, and string streams
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
+#include <sstream>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -23,13 +25,15 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -72,9 +76,9 @@ SDL_Renderer* gRenderer = NULL;
 //Globally used font
 TTF_Font* gFont = NULL;
 
-//Rendered texture
-LTexture gTextTexture;
-
+//Scene textures
+LTexture gPromptTextTexture;
+LTexture gInputTextTexture;
 
 LTexture::LTexture()
 {
@@ -131,6 +135,7 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +143,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +161,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -288,7 +295,7 @@ bool loadMedia()
 	bool success = true;
 
 	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
+	gFont = TTF_OpenFont( "32_text_input_and_clipboard_handling/lazy.ttf", 28 );
 	if( gFont == NULL )
 	{
 		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
@@ -296,11 +303,11 @@ bool loadMedia()
 	}
 	else
 	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
+		//Render the prompt
+		SDL_Color textColor = { 0, 0, 0, 0xFF };
+		if( !gPromptTextTexture.loadFromRenderedText( "Enter Text:", textColor ) )
 		{
-			printf( "Failed to render text texture!\n" );
+			printf( "Failed to render prompt text!\n" );
 			success = false;
 		}
 	}
@@ -311,7 +318,8 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
+	gPromptTextTexture.free();
+	gInputTextTexture.free();
 
 	//Free global font
 	TTF_CloseFont( gFont );
@@ -351,9 +359,22 @@ int main( int argc, char* args[] )
 			//Event handler
 			SDL_Event e;
 
+			//Set text color as black
+			SDL_Color textColor = { 0, 0, 0, 0xFF };
+
+			//The current input text.
+			std::string inputText = "Some Text";
+			gInputTextTexture.loadFromRenderedText( inputText.c_str(), textColor );
+
+			//Enable text input
+			SDL_StartTextInput();
+
 			//While application is running
 			while( !quit )
 			{
+				//The rerender text flag
+				bool renderText = false;
+
 				//Handle events on queue
 				while( SDL_PollEvent( &e ) != 0 )
 				{
@@ -362,18 +383,76 @@ int main( int argc, char* args[] )
 					{
 						quit = true;
 					}
+					//Special key input
+					else if( e.type == SDL_KEYDOWN )
+					{
+						//Handle backspace
+						if( e.key.keysym.sym == SDLK_BACKSPACE && inputText.length() > 0 )
+						{
+							//lop off character
+							inputText.pop_back();
+							renderText = true;
+						}
+						//Handle copy
+						else if( e.key.keysym.sym == SDLK_c && SDL_GetModState() & KMOD_CTRL )
+						{
+							SDL_SetClipboardText( inputText.c_str() );
+						}
+						//Handle paste
+						else if( e.key.keysym.sym == SDLK_v && SDL_GetModState() & KMOD_CTRL )
+						{
+							//Copy text from temporary buffer
+							char* tempText = SDL_GetClipboardText();
+							inputText = tempText;
+							SDL_free( tempText );
+
+							renderText = true;
+						}
+					}
+					//Special text input event
+					else if( e.type == SDL_TEXTINPUT )
+					{
+						//Not copy or pasting
+						if( !( SDL_GetModState() & KMOD_CTRL && ( e.text.text[ 0 ] == 'c' || e.text.text[ 0 ] == 'C' || e.text.text[ 0 ] == 'v' || e.text.text[ 0 ] == 'V' ) ) )
+						{
+							//Append character
+							inputText += e.text.text;
+							renderText = true;
+						}
+					}
+				}
+
+				//Rerender text if needed
+				if( renderText )
+				{
+					//Text is not empty
+					if( inputText != "" )
+					{
+						//Render new text
+						gInputTextTexture.loadFromRenderedText( inputText.c_str(), textColor );
+					}
+					//Text is empty
+					else
+					{
+						//Render space texture
+						gInputTextTexture.loadFromRenderedText( " ", textColor );
+					}
 				}
 
 				//Clear screen
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				//Render text textures
+				gPromptTextTexture.render( ( SCREEN_WIDTH - gPromptTextTexture.getWidth() ) / 2, 0 );
+				gInputTextTexture.render( ( SCREEN_WIDTH - gInputTextTexture.getWidth() ) / 2, gPromptTextTexture.getHeight() );
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );
 			}
+			
+			//Disable text input
+			SDL_StopTextInput();
 		}
 	}
 

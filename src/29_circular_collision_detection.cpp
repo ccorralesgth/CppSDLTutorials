@@ -1,14 +1,21 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, vectors, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
+
+//A circle stucture
+struct Circle
+{
+	int x, y;
+	int r;
+};
 
 //Texture wrapper class
 class LTexture
@@ -23,13 +30,15 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -54,6 +63,46 @@ class LTexture
 		int mHeight;
 };
 
+//The dot that will move around on the screen
+class Dot
+{
+    public:
+		//The dimensions of the dot
+		static const int DOT_WIDTH = 20;
+		static const int DOT_HEIGHT = 20;
+
+		//Maximum axis velocity of the dot
+		static const int DOT_VEL = 1;
+
+		//Initializes the variables
+		Dot( int x, int y );
+
+		//Takes key presses and adjusts the dot's velocity
+		void handleEvent( SDL_Event& e );
+
+		//Moves the dot and checks collision
+		void move( SDL_Rect& square, Circle& circle );
+
+		//Shows the dot on the screen
+		void render();
+
+		//Gets collision circle
+		Circle& getCollider();
+
+    private:
+		//The X and Y offsets of the dot
+		int mPosX, mPosY;
+
+		//The velocity of the dot
+		int mVelX, mVelY;
+		
+		//Dot's collision circle
+		Circle mCollider;
+
+		//Moves the collision circle relative to the dot's offset
+		void shiftColliders();
+};
+
 //Starts up SDL and creates window
 bool init();
 
@@ -63,18 +112,23 @@ bool loadMedia();
 //Frees media and shuts down SDL
 void close();
 
+//Circle/Circle collision detector
+bool checkCollision( Circle& a, Circle& b );
+
+//Circle/Box collision detector
+bool checkCollision( Circle& a, SDL_Rect& b );
+
+//Calculates distance squared between two points
+double distanceSquared( int x1, int y1, int x2, int y2 );
+
 //The window we'll be rendering to
 SDL_Window* gWindow = NULL;
 
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
-
+//Scene textures
+LTexture gDotTexture;
 
 LTexture::LTexture()
 {
@@ -131,6 +185,7 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +193,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +211,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -221,6 +278,96 @@ int LTexture::getHeight()
 	return mHeight;
 }
 
+Dot::Dot( int x, int y )
+{
+    //Initialize the offsets
+    mPosX = x;
+    mPosY = y;
+
+	//Set collision circle size
+	mCollider.r = DOT_WIDTH / 2;
+
+    //Initialize the velocity
+    mVelX = 0;
+    mVelY = 0;
+
+	//Move collider relative to the circle
+	shiftColliders();
+}
+
+void Dot::handleEvent( SDL_Event& e )
+{
+    //If a key was pressed
+	if( e.type == SDL_KEYDOWN && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY -= DOT_VEL; break;
+            case SDLK_DOWN: mVelY += DOT_VEL; break;
+            case SDLK_LEFT: mVelX -= DOT_VEL; break;
+            case SDLK_RIGHT: mVelX += DOT_VEL; break;
+        }
+    }
+    //If a key was released
+    else if( e.type == SDL_KEYUP && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY += DOT_VEL; break;
+            case SDLK_DOWN: mVelY -= DOT_VEL; break;
+            case SDLK_LEFT: mVelX += DOT_VEL; break;
+            case SDLK_RIGHT: mVelX -= DOT_VEL; break;
+        }
+    }
+}
+
+void Dot::move( SDL_Rect& square, Circle& circle )
+{
+    //Move the dot left or right
+    mPosX += mVelX;
+	shiftColliders();
+
+    //If the dot collided or went too far to the left or right
+	if( ( mPosX - mCollider.r < 0 ) || ( mPosX + mCollider.r > SCREEN_WIDTH ) || checkCollision( mCollider, square ) || checkCollision( mCollider, circle ) )
+    {
+        //Move back
+        mPosX -= mVelX;
+		shiftColliders();
+    }
+
+    //Move the dot up or down
+    mPosY += mVelY;
+	shiftColliders();
+
+    //If the dot collided or went too far up or down
+    if( ( mPosY - mCollider.r < 0 ) || ( mPosY + mCollider.r > SCREEN_HEIGHT ) || checkCollision( mCollider, square ) || checkCollision( mCollider, circle ) )
+    {
+        //Move back
+        mPosY -= mVelY;
+		shiftColliders();
+    }
+}
+
+void Dot::render()
+{
+    //Show the dot
+	gDotTexture.render( mPosX - mCollider.r, mPosY - mCollider.r );
+}
+
+Circle& Dot::getCollider()
+{
+	return mCollider;
+}
+
+void Dot::shiftColliders()
+{
+	//Align collider to center of dot
+	mCollider.x = mPosX;
+	mCollider.y = mPosY;
+}
+
 bool init()
 {
 	//Initialization flag
@@ -268,13 +415,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,22 +427,11 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load dot texture
+	if( !gDotTexture.loadFromFile( "29_circular_collision_detection/dot.bmp" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load dot texture!\n" );
 		success = false;
-	}
-	else
-	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
 	}
 
 	return success;
@@ -311,11 +440,7 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gDotTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
@@ -324,9 +449,76 @@ void close()
 	gRenderer = NULL;
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
+}
+
+bool checkCollision( Circle& a, Circle& b )
+{
+	//Calculate total radius squared
+	int totalRadiusSquared = a.r + b.r;
+	totalRadiusSquared = totalRadiusSquared * totalRadiusSquared;
+
+    //If the distance between the centers of the circles is less than the sum of their radii
+    if( distanceSquared( a.x, a.y, b.x, b.y ) < ( totalRadiusSquared ) )
+    {
+        //The circles have collided
+        return true;
+    }
+
+    //If not
+    return false;
+}
+
+bool checkCollision( Circle& a, SDL_Rect& b )
+{
+    //Closest point on collision box
+    int cX, cY;
+
+    //Find closest x offset
+    if( a.x < b.x )
+    {
+        cX = b.x;
+    }
+    else if( a.x > b.x + b.w )
+    {
+        cX = b.x + b.w;
+    }
+    else
+    {
+        cX = a.x;
+    }
+
+    //Find closest y offset
+    if( a.y < b.y )
+    {
+        cY = b.y;
+    }
+    else if( a.y > b.y + b.h )
+    {
+        cY = b.y + b.h;
+    }
+    else
+    {
+        cY = a.y;
+    }
+
+    //If the closest point is inside the circle
+    if( distanceSquared( a.x, a.y, cX, cY ) < a.r * a.r )
+    {
+        //This box and the circle have collided
+        return true;
+    }
+
+    //If the shapes have not collided
+    return false;
+}
+
+double distanceSquared( int x1, int y1, int x2, int y2 )
+{
+	int deltaX = x2 - x1;
+	int deltaY = y2 - y1;
+	return deltaX*deltaX + deltaY*deltaY;
 }
 
 int main( int argc, char* args[] )
@@ -351,6 +543,17 @@ int main( int argc, char* args[] )
 			//Event handler
 			SDL_Event e;
 
+			//The dot that will be moving around on the screen
+			Dot dot( Dot::DOT_WIDTH / 2, Dot::DOT_HEIGHT / 2 );
+			Dot otherDot( SCREEN_WIDTH / 4, SCREEN_HEIGHT / 4 );
+
+			//Set the wall
+			SDL_Rect wall;
+			wall.x = 300;
+			wall.y = 40;
+			wall.w = 40;
+			wall.h = 400;
+			
 			//While application is running
 			while( !quit )
 			{
@@ -362,14 +565,25 @@ int main( int argc, char* args[] )
 					{
 						quit = true;
 					}
+
+					//Handle input for the dot
+					dot.handleEvent( e );
 				}
+
+				//Move the dot and check collision
+				dot.move( wall, otherDot.getCollider() );
 
 				//Clear screen
 				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
 				SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+				//Render wall
+				SDL_SetRenderDrawColor( gRenderer, 0x00, 0x00, 0x00, 0xFF );		
+				SDL_RenderDrawRect( gRenderer, &wall );
+				
+				//Render dots
+				dot.render();
+				otherDot.render();
 
 				//Update screen
 				SDL_RenderPresent( gRenderer );

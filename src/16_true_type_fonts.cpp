@@ -1,3 +1,5 @@
+// Use readme.md to find tutorial link (lazy foo sdl)
+
 //Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -29,7 +31,7 @@ class LTexture
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -288,7 +290,7 @@ bool loadMedia()
 	bool success = true;
 
 	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
+	gFont = TTF_OpenFont( "16_true_type_fonts/lazy.ttf", 28 );
 	if( gFont == NULL )
 	{
 		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );

@@ -1,10 +1,11 @@
-//Using SDL, SDL_image, SDL_ttf, standard IO, math, and strings
+// Use readme.md to find tutorial link (lazy foo sdl)
+
+//Using SDL, SDL_image, standard IO, strings, and string streams
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string>
-#include <cmath>
+#include <sstream>
 
 //Screen dimension constants
 const int SCREEN_WIDTH = 640;
@@ -23,13 +24,15 @@ class LTexture
 		//Loads image at specified path
 		bool loadFromFile( std::string path );
 		
+		#if defined(SDL_TTF_MAJOR_VERSION)
 		//Creates image from font string
 		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
 		//Deallocates texture
 		void free();
 
-		//Set color modulation 
+		//Set color modulation
 		void setColor( Uint8 red, Uint8 green, Uint8 blue );
 
 		//Set blending
@@ -54,6 +57,48 @@ class LTexture
 		int mHeight;
 };
 
+class LWindow
+{
+	public:
+		//Intializes internals
+		LWindow();
+
+		//Creates window
+		bool init();
+
+		//Creates renderer from internal window
+		SDL_Renderer* createRenderer();
+
+		//Handles window events
+		void handleEvent( SDL_Event& e );
+
+		//Deallocates internals
+		void free();
+
+		//Window dimensions
+		int getWidth();
+		int getHeight();
+
+		//Window focii
+		bool hasMouseFocus();
+		bool hasKeyboardFocus();
+		bool isMinimized();
+
+	private:
+		//Window data
+		SDL_Window* mWindow;
+
+		//Window dimensions
+		int mWidth;
+		int mHeight;
+
+		//Window focus
+		bool mMouseFocus;
+		bool mKeyboardFocus;
+		bool mFullScreen;
+		bool mMinimized;
+};
+
 //Starts up SDL and creates window
 bool init();
 
@@ -63,17 +108,14 @@ bool loadMedia();
 //Frees media and shuts down SDL
 void close();
 
-//The window we'll be rendering to
-SDL_Window* gWindow = NULL;
+//Our custom window
+LWindow gWindow;
 
 //The window renderer
 SDL_Renderer* gRenderer = NULL;
 
-//Globally used font
-TTF_Font* gFont = NULL;
-
-//Rendered texture
-LTexture gTextTexture;
+//Scene textures
+LTexture gSceneTexture;
 
 
 LTexture::LTexture()
@@ -131,6 +173,7 @@ bool LTexture::loadFromFile( std::string path )
 	return mTexture != NULL;
 }
 
+#if defined(SDL_TTF_MAJOR_VERSION)
 bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
 {
 	//Get rid of preexisting texture
@@ -138,11 +181,7 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 
 	//Render text surface
 	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
-	if( textSurface == NULL )
-	{
-		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
-	}
-	else
+	if( textSurface != NULL )
 	{
 		//Create texture from surface pixels
         mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
@@ -160,10 +199,16 @@ bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColo
 		//Get rid of old surface
 		SDL_FreeSurface( textSurface );
 	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
 	
 	//Return success
 	return mTexture != NULL;
 }
+#endif
 
 void LTexture::free()
 {
@@ -221,6 +266,163 @@ int LTexture::getHeight()
 	return mHeight;
 }
 
+LWindow::LWindow()
+{
+	//Initialize non-existant window
+	mWindow = NULL;
+	mMouseFocus = false;
+	mKeyboardFocus = false;
+	mFullScreen = false;
+	mMinimized = false;
+	mWidth = 0;
+	mHeight = 0;
+}
+
+bool LWindow::init()
+{
+	//Create window
+	mWindow = SDL_CreateWindow( "SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE );
+	if( mWindow != NULL )
+	{
+		mMouseFocus = true;
+		mKeyboardFocus = true;
+		mWidth = SCREEN_WIDTH;
+		mHeight = SCREEN_HEIGHT;
+	}
+
+	return mWindow != NULL;
+}
+
+SDL_Renderer* LWindow::createRenderer()
+{
+	return SDL_CreateRenderer( mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
+}
+
+void LWindow::handleEvent( SDL_Event& e )
+{
+	//Window event occured
+	if( e.type == SDL_WINDOWEVENT )
+	{
+		//Caption update flag
+		bool updateCaption = false;
+
+		switch( e.window.event )
+		{
+			//Get new dimensions and repaint on window size change
+			case SDL_WINDOWEVENT_SIZE_CHANGED:
+			mWidth = e.window.data1;
+			mHeight = e.window.data2;
+			SDL_RenderPresent( gRenderer );
+			break;
+
+			//Repaint on exposure
+			case SDL_WINDOWEVENT_EXPOSED:
+			SDL_RenderPresent( gRenderer );
+			break;
+
+			//Mouse entered window
+			case SDL_WINDOWEVENT_ENTER:
+			mMouseFocus = true;
+			updateCaption = true;
+			break;
+			
+			//Mouse left window
+			case SDL_WINDOWEVENT_LEAVE:
+			mMouseFocus = false;
+			updateCaption = true;
+			break;
+
+			//Window has keyboard focus
+			case SDL_WINDOWEVENT_FOCUS_GAINED:
+			mKeyboardFocus = true;
+			updateCaption = true;
+			break;
+
+			//Window lost keyboard focus
+			case SDL_WINDOWEVENT_FOCUS_LOST:
+			mKeyboardFocus = false;
+			updateCaption = true;
+			break;
+
+			//Window minimized
+			case SDL_WINDOWEVENT_MINIMIZED:
+            mMinimized = true;
+            break;
+
+			//Window maximized
+			case SDL_WINDOWEVENT_MAXIMIZED:
+			mMinimized = false;
+            break;
+			
+			//Window restored
+			case SDL_WINDOWEVENT_RESTORED:
+			mMinimized = false;
+            break;
+		}
+
+		//Update window caption with new data
+		if( updateCaption )
+		{
+			std::stringstream caption;
+			caption << "SDL Tutorial - MouseFocus:" << ( ( mMouseFocus ) ? "On" : "Off" ) << " KeyboardFocus:" << ( ( mKeyboardFocus ) ? "On" : "Off" );
+			SDL_SetWindowTitle( mWindow, caption.str().c_str() );
+		}
+	}
+	//Enter exit full screen on return key
+	else if( e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN )
+	{
+		if( mFullScreen )
+		{
+			SDL_SetWindowFullscreen( mWindow, 0 );
+			mFullScreen = false;
+		}
+		else
+		{
+			SDL_SetWindowFullscreen( mWindow, SDL_WINDOW_FULLSCREEN_DESKTOP );
+			mFullScreen = true;
+			mMinimized = false;
+		}
+	}
+}
+
+void LWindow::free()
+{
+	if( mWindow != NULL )
+	{
+		SDL_DestroyWindow( mWindow );
+	}
+
+	mMouseFocus = false;
+	mKeyboardFocus = false;
+	mWidth = 0;
+	mHeight = 0;
+}
+
+int LWindow::getWidth()
+{
+	return mWidth;
+}
+
+int LWindow::getHeight()
+{
+	return mHeight;
+}
+
+bool LWindow::hasMouseFocus()
+{
+	return mMouseFocus;
+}
+
+bool LWindow::hasKeyboardFocus()
+{
+	return mKeyboardFocus;
+}
+
+bool LWindow::isMinimized()
+{
+	return mMinimized;
+}
+
 bool init()
 {
 	//Initialization flag
@@ -241,16 +443,15 @@ bool init()
 		}
 
 		//Create window
-		gWindow = SDL_CreateWindow( "SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
-		if( gWindow == NULL )
+		if( !gWindow.init() )
 		{
 			printf( "Window could not be created! SDL Error: %s\n", SDL_GetError() );
 			success = false;
 		}
 		else
 		{
-			//Create vsynced renderer for window
-			gRenderer = SDL_CreateRenderer( gWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
+			//Create renderer for window
+			gRenderer = gWindow.createRenderer();
 			if( gRenderer == NULL )
 			{
 				printf( "Renderer could not be created! SDL Error: %s\n", SDL_GetError() );
@@ -268,13 +469,6 @@ bool init()
 					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
 					success = false;
 				}
-
-				 //Initialize SDL_ttf
-				if( TTF_Init() == -1 )
-				{
-					printf( "SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError() );
-					success = false;
-				}
 			}
 		}
 	}
@@ -287,22 +481,11 @@ bool loadMedia()
 	//Loading success flag
 	bool success = true;
 
-	//Open the font
-	gFont = TTF_OpenFont( "resources/lazy.ttf", 28 );
-	if( gFont == NULL )
+	//Load scene texture
+	if( !gSceneTexture.loadFromFile( "35_window_events/window.png" ) )
 	{
-		printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );
+		printf( "Failed to load window texture!\n" );
 		success = false;
-	}
-	else
-	{
-		//Render text
-		SDL_Color textColor = { 0, 0, 0 };
-		if( !gTextTexture.loadFromRenderedText( "The quick brown fox jumps over the lazy dog", textColor ) )
-		{
-			printf( "Failed to render text texture!\n" );
-			success = false;
-		}
 	}
 
 	return success;
@@ -311,20 +494,13 @@ bool loadMedia()
 void close()
 {
 	//Free loaded images
-	gTextTexture.free();
-
-	//Free global font
-	TTF_CloseFont( gFont );
-	gFont = NULL;
+	gSceneTexture.free();
 
 	//Destroy window	
 	SDL_DestroyRenderer( gRenderer );
-	SDL_DestroyWindow( gWindow );
-	gWindow = NULL;
-	gRenderer = NULL;
+	gWindow.free();
 
 	//Quit SDL subsystems
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -362,17 +538,24 @@ int main( int argc, char* args[] )
 					{
 						quit = true;
 					}
+
+					//Handle window events
+					gWindow.handleEvent( e );
 				}
 
-				//Clear screen
-				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
-				SDL_RenderClear( gRenderer );
+				//Only draw when not minimized
+				if( !gWindow.isMinimized() )
+				{
+					//Clear screen
+					SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
+					SDL_RenderClear( gRenderer );
 
-				//Render current frame
-				gTextTexture.render( ( SCREEN_WIDTH - gTextTexture.getWidth() ) / 2, ( SCREEN_HEIGHT - gTextTexture.getHeight() ) / 2 );
+					//Render text textures
+					gSceneTexture.render( ( gWindow.getWidth() - gSceneTexture.getWidth() ) / 2, ( gWindow.getHeight() - gSceneTexture.getHeight() ) / 2 );
 
-				//Update screen
-				SDL_RenderPresent( gRenderer );
+					//Update screen
+					SDL_RenderPresent( gRenderer );
+				}
 			}
 		}
 	}
